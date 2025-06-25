@@ -7,6 +7,18 @@ window.addEventListener("DOMContentLoaded", () => {
   const h1 = document.querySelector("h1");
   let audioContext = null; // Web Audio APIのコンテキスト
 
+  // ドレミファソラシドの周波数 (Cメジャースケール)
+  const scaleFrequencies = [
+    261.63, // C4 (ド)
+    293.66, // D4 (レ)
+    329.63, // E4 (ミ)
+    349.23, // F4 (ファ)
+    392.0, // G4 (ソ)
+    440.0, // A4 (ラ)
+    493.88, // B4 (シ)
+    523.25, // C5 (高いド)
+  ];
+
   // アニメーション関連のグローバル変数
   let currentShapeProps = {
     hue: 0,
@@ -227,8 +239,9 @@ window.addEventListener("DOMContentLoaded", () => {
   function generateAndPlaySound(text, hash) {
     const random = pseudoRandomGenerator(hash);
     const lastCharCode = text.charCodeAt(text.length - 1);
-    const frequency = 200 + (lastCharCode % 600);
-
+    // 文字コードをスケールのインデックスにマッピング
+    const noteIndex = lastCharCode % scaleFrequencies.length;
+    const frequency = scaleFrequencies[noteIndex];
     const waveforms = ["sine", "square", "sawtooth", "triangle"];
     const type = waveforms[Math.floor(random.next().value * waveforms.length)];
 
