@@ -2,6 +2,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const textInput = document.getElementById("textInput");
   const canvas = document.getElementById("shapeCanvas");
   const ctx = canvas.getContext("2d");
+  let audioContext = null; // Web Audio APIのコンテキスト
 
   // キャンバスのサイズを設定
   const canvasSize = Math.min(window.innerWidth * 0.9, 700);
@@ -10,7 +11,19 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // テキスト入力イベントを監視
   textInput.addEventListener("input", (e) => {
-    drawShape(e.target.value);
+    // 最初の入力でAudioContextを初期化（ブラウザの自動再生ポリシー対策）
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    const text = e.target.value;
+
+    // 最後に入力された文字に基づいて音を再生
+    if (text.length > 0) {
+      const lastCharCode = text.charCodeAt(text.length - 1);
+      playSound(200 + (lastCharCode % 600)); // 周波数を計算して再生
+    }
+    drawShape(text);
   });
 
   // 初期状態の描画（プロンプトメッセージ）
@@ -50,6 +63,32 @@ window.addEventListener("DOMContentLoaded", () => {
       state = (state * 16807) % 2147483647;
       yield state / 2147483647; // 0と1の間の値を返す
     }
+  }
+
+  // 指定された周波数で音を再生する関数
+  function playSound(frequency) {
+    if (!audioContext) return;
+
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // 音のプロパティを設定
+    oscillator.type = "sine"; // サイン波（きれいな音）
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+    // 音量を小さめに設定し、すぐにフェードアウトさせる
+    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.0001,
+      audioContext.currentTime + 0.2
+    );
+
+    // 音の再生を開始・停止
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
   }
 
   // 図形を描画するメイン関数
