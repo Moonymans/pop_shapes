@@ -18,12 +18,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const text = e.target.value;
 
-    // 最後に入力された文字に基づいて音を再生
-    if (text.length > 0) {
-      const lastCharCode = text.charCodeAt(text.length - 1);
-      playSound(200 + (lastCharCode % 600)); // 周波数を計算して再生
+    if (text.length === 0) {
+      drawInitialMessage();
+      return;
     }
-    drawShape(text);
+
+    const hash = createHash(text);
+    const random = pseudoRandomGenerator(hash);
+
+    // テキストに基づいて音を生成・再生
+    generateAndPlaySound(text, random);
+    // 図形を描画
+    drawShape(text, hash, random);
   });
 
   // 初期状態の描画（プロンプトメッセージ）
@@ -65,8 +71,22 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 指定された周波数で音を再生する関数
-  function playSound(frequency) {
+  // 音を生成して再生する高レベル関数
+  function generateAndPlaySound(text, random) {
+    const lastCharCode = text.charCodeAt(text.length - 1);
+    const frequency = 200 + (lastCharCode % 600);
+
+    const waveforms = ["sine", "square", "sawtooth", "triangle"];
+    const type = waveforms[Math.floor(random.next().value * waveforms.length)];
+
+    // 音の長さをランダムに
+    const decay = 0.1 + random.next().value * 0.3; // 0.1秒から0.4秒の間
+
+    playSound({ frequency, type, decay });
+  }
+
+  // 指定されたパラメータで音を再生する低レベル関数
+  function playSound({ frequency, type = "sine", decay = 0.2 }) {
     if (!audioContext) return;
 
     const oscillator = audioContext.createOscillator();
@@ -76,38 +96,29 @@ window.addEventListener("DOMContentLoaded", () => {
     gainNode.connect(audioContext.destination);
 
     // 音のプロパティを設定
-    oscillator.type = "sine"; // サイン波（きれいな音）
+    oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
 
-    // 音量を小さめに設定し、すぐにフェードアウトさせる
+    // 音量を小さめに設定し、指定された時間でフェードアウトさせる
     gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(
       0.0001,
-      audioContext.currentTime + 0.2
+      audioContext.currentTime + decay
     );
 
     // 音の再生を開始・停止
     oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.2);
+    oscillator.stop(audioContext.currentTime + decay);
   }
 
   // 図形を描画するメイン関数
-  function drawShape(text) {
+  function drawShape(text, hash, random) {
     // キャンバスをクリア
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const len = text.length;
 
-    if (len === 0) {
-      drawInitialMessage();
-      return;
-    }
-
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-
-    // テキストからプロパティを生成
-    const hash = createHash(text);
-    const random = pseudoRandomGenerator(hash);
 
     // 色
     const hue = Math.abs(hash % 360);
