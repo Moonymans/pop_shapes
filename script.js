@@ -35,16 +35,19 @@ window.addEventListener("DOMContentLoaded", () => {
       canvas.width = size;
       canvas.height = size;
     }
-    // リサイズ時に図形を再生成して新しいサイズに適応させる
+    // リサイズ時に図形を再生成または初期メッセージを再描画
     const text = textInput.value;
     const targetCount = text.length;
+    if (targetCount === 0) {
+      drawInitialMessage();
+      return;
+    }
     shapes = []; // 既存の図形をクリア
     while (shapes.length < targetCount) {
       const newShape = createShape(text, shapes.length);
       newShape.age = newShape.lifespan; // アニメーションなしで即時表示
       shapes.push(newShape);
     }
-    // 再描画をトリガー
     if (!animationFrameId) {
       animate();
     }
@@ -216,7 +219,9 @@ window.addEventListener("DOMContentLoaded", () => {
     // 基本テキスト色 (暗く、彩度低め)
     body.style.color = `hsl(${hue}, 15%, 30%)`;
     // 見出し色 (はっきりと)
-    h1.style.color = `hsl(${hue}, 60%, 40%)`;
+    if (h1) {
+      h1.style.color = `hsl(${hue}, 60%, 40%)`;
+    }
     // 入力欄のボーダー色も合わせる
     textInput.style.borderColor = `hsl(${hue}, 60%, 40%)`;
   }
@@ -225,7 +230,9 @@ window.addEventListener("DOMContentLoaded", () => {
   function resetUIColors() {
     body.style.backgroundColor = "";
     body.style.color = "";
-    h1.style.color = "";
+    if (h1) {
+      h1.style.color = "";
+    }
     textInput.style.borderColor = "";
   }
 
