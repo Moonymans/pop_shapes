@@ -46,6 +46,10 @@ window.addEventListener("DOMContentLoaded", () => {
     while (shapes.length < targetCount) {
       const newShape = createShape(text, shapes.length);
       newShape.age = newShape.lifespan; // アニメーションなしで即時表示
+      // Place at final position for resize
+      newShape.x = newShape.targetX;
+      newShape.y = newShape.targetY;
+      newShape.radius = newShape.finalRadius;
       shapes.push(newShape);
     }
     if (!animationFrameId) {
@@ -151,16 +155,14 @@ window.addEventListener("DOMContentLoaded", () => {
     // 図形の最終的な半径
     const finalRadius = 15 + random.next().value * (15 + text.length * 1.2);
 
-    // 図形の最終的な位置を決定論的に配置
-    const posRand = pseudoRandomGenerator(hash + index);
-    const targetX = (posRand.next().value * 0.8 + 0.1) * canvas.width;
-    const targetY = (posRand.next().value * 0.8 + 0.1) * canvas.height;
-
     // 分裂元（前の図形）の位置を取得。なければ中央から。
     const spawnFrom = shapes[index - 1] || {
-      targetX: canvas.width / 2,
-      targetY: canvas.height / 2,
+      x: canvas.width / 2,
+      y: canvas.height / 2,
     };
+    // 図形の初期ターゲット位置
+    const targetX = (random.next().value * 0.8 + 0.1) * canvas.width;
+    const targetY = (random.next().value * 0.8 + 0.1) * canvas.height;
 
     const sides = 3 + Math.floor(random.next().value * 7);
     const irregularity = random.next().value * 0.7;
@@ -179,14 +181,21 @@ window.addEventListener("DOMContentLoaded", () => {
       rotation,
       hue,
       vertexRandomFactors,
-      targetX,
-      targetY,
       finalRadius,
+      // 現在の状態
+      x: spawnFrom.x,
+      y: spawnFrom.y,
+      radius: 0,
+      // 移動用の速度
+      vx: (random.next().value - 0.5) * 2,
+      vy: (random.next().value - 0.5) * 2,
       // アニメーション用プロパティ
-      spawnX: spawnFrom.targetX,
-      spawnY: spawnFrom.targetY,
+      spawnX: spawnFrom.x,
+      spawnY: spawnFrom.y,
+      targetX: targetX,
+      targetY: targetY,
       age: 0,
-      lifespan: 40, // アニメーションのフレーム数
+      lifespan: 60, // アニメーションのフレーム数
     };
   }
 
@@ -194,17 +203,40 @@ window.addEventListener("DOMContentLoaded", () => {
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let isAnimating = false;
     shapes.forEach((shape) => {
+      // フェーズ1: スポーンアニメーション
       if (shape.age < shape.lifespan) {
         shape.age++;
-        isAnimating = true;
+        const progress = shape.age / shape.lifespan;
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        shape.x = lerp(shape.spawnX, shape.targetX, easedProgress);
+        shape.y = lerp(shape.spawnY, shape.targetY, easedProgress);
+        shape.radius = shape.finalRadius * easedProgress;
+      } else {
+        // フェーズ2: 跳ね返り
+        shape.x += shape.vx;
+        shape.y += shape.vy;
+
+        // 画面端での衝突判定
+        if (shape.x - shape.radius < 0) {
+          shape.vx *= -1;
+          shape.x = shape.radius;
+        } else if (shape.x + shape.radius > canvas.width) {
+          shape.vx *= -1;
+          shape.x = canvas.width - shape.radius;
+        }
+        if (shape.y - shape.radius < 0) {
+          shape.vy *= -1;
+          shape.y = shape.radius;
+        } else if (shape.y + shape.radius > canvas.height) {
+          shape.vy *= -1;
+          shape.y = canvas.height - shape.radius;
+        }
       }
-      const progress = Math.min(1, shape.age / shape.lifespan);
-      drawPolygon(shape, progress);
+      drawPolygon(shape);
     });
 
-    if (isAnimating || shapes.length !== textInput.value.length) {
+    if (shapes.length > 0) {
       animationFrameId = requestAnimationFrame(animate);
     } else {
       animationFrameId = null;
@@ -279,19 +311,16 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // 個々の多角形を描画する関数
-  function drawPolygon(shape, progress) {
-    // ease-out cubic easing function for a nice effect
-    const easedProgress = 1 - Math.pow(1 - progress, 3);
+  function drawPolygon(shape) {
+    if (shape.radius < 1) return;
 
-    const currentRadius = shape.finalRadius * easedProgress;
-    if (currentRadius < 1) return; // 小さすぎる図形は描画しない
-
-    const currentX = lerp(shape.spawnX, shape.targetX, easedProgress);
-    const currentY = lerp(shape.spawnY, shape.targetY, easedProgress);
+    const currentX = shape.x;
+    const currentY = shape.y;
+    const currentRadius = shape.radius;
 
     ctx.fillStyle = `hsla(${shape.hue}, 75%, 60%, 0.8)`;
     ctx.strokeStyle = `hsl(${shape.hue}, 75%, 40%)`;
-    ctx.lineWidth = 1 + easedProgress;
+    ctx.lineWidth = 1 + shape.radius / shape.finalRadius;
 
     ctx.beginPath();
     for (let i = 0; i <= shape.sides; i++) {
