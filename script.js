@@ -2,6 +2,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const textInput = document.getElementById("textInput");
   const canvas = document.getElementById("shapeCanvas");
   const ctx = canvas.getContext("2d");
+  const body = document.body;
+  const h1 = document.querySelector("h1");
   let audioContext = null; // Web Audio APIのコンテキスト
 
   // キャンバスのサイズを設定
@@ -20,16 +22,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (text.length === 0) {
       drawInitialMessage();
+      resetUIColors();
       return;
     }
 
     const hash = createHash(text);
-    const random = pseudoRandomGenerator(hash);
 
     // テキストに基づいて音を生成・再生
-    generateAndPlaySound(text, random);
+    generateAndPlaySound(text, hash);
+    // UIの色を更新
+    updateUIColors(hash);
     // 図形を描画
-    drawShape(text, hash, random);
+    drawShape(text, hash);
   });
 
   // 初期状態の描画（プロンプトメッセージ）
@@ -71,8 +75,30 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // UIの色を更新する関数
+  function updateUIColors(hash) {
+    const hue = Math.abs(hash % 360);
+    // 背景色 (明るく、彩度低め)
+    body.style.backgroundColor = `hsl(${hue}, 25%, 95%)`;
+    // 基本テキスト色 (暗く、彩度低め)
+    body.style.color = `hsl(${hue}, 15%, 30%)`;
+    // 見出し色 (はっきりと)
+    h1.style.color = `hsl(${hue}, 60%, 40%)`;
+    // 入力欄のボーダー色も合わせる
+    textInput.style.borderColor = `hsl(${hue}, 60%, 40%)`;
+  }
+
+  // UIの色をデフォルトに戻す関数
+  function resetUIColors() {
+    body.style.backgroundColor = "";
+    body.style.color = "";
+    h1.style.color = "";
+    textInput.style.borderColor = "";
+  }
+
   // 音を生成して再生する高レベル関数
-  function generateAndPlaySound(text, random) {
+  function generateAndPlaySound(text, hash) {
+    const random = pseudoRandomGenerator(hash);
     const lastCharCode = text.charCodeAt(text.length - 1);
     const frequency = 200 + (lastCharCode % 600);
 
@@ -112,13 +138,15 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // 図形を描画するメイン関数
-  function drawShape(text, hash, random) {
+  function drawShape(text, hash) {
     // キャンバスをクリア
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const len = text.length;
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
+
+    const random = pseudoRandomGenerator(hash);
 
     // 色
     const hue = Math.abs(hash % 360);
