@@ -6,6 +6,20 @@ window.addEventListener("DOMContentLoaded", () => {
   const h1 = document.querySelector("h1");
   let audioContext = null; // Web Audio APIのコンテキスト
 
+  // アニメーション関連のグローバル変数
+  let currentShapeProps = {
+    hue: 0,
+    baseRadius: 0,
+    sides: 0,
+    irregularity: 0,
+    rotation: 0,
+    vertexRandomFactors: [],
+  };
+  let targetShapeProps = { ...currentShapeProps };
+  let animationStartTime = 0;
+  const animationDuration = 500; // アニメーションの持続時間 (ms)
+  let animationFrameId = null;
+
   // キャンバスのサイズを設定
   const canvasSize = Math.min(window.innerWidth * 0.9, 700);
   canvas.width = canvasSize;
@@ -23,17 +37,68 @@ window.addEventListener("DOMContentLoaded", () => {
     if (text.length === 0) {
       drawInitialMessage();
       resetUIColors();
+      // アニメーションを停止し、プロパティをリセット
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      currentShapeProps = {
+        hue: 0,
+        baseRadius: 0,
+        sides: 0,
+        irregularity: 0,
+        rotation: 0,
+        vertexRandomFactors: [],
+      };
+      targetShapeProps = { ...currentShapeProps };
       return;
     }
 
     const hash = createHash(text);
+    const randomForShapeProps = pseudoRandomGenerator(hash); // 図形の主要プロパティ用
 
     // テキストに基づいて音を生成・再生
     generateAndPlaySound(text, hash);
     // UIの色を更新
     updateUIColors(hash);
     // 図形を描画
-    drawShape(text, hash);
+
+    // 新しいターゲットプロパティを計算
+    const len = text.length;
+    const maxRadius = canvas.width / 2 - 30;
+    const newBaseRadius = Math.min(maxRadius, 30 + len * 10);
+    const newSides = 3 + Math.floor(randomForShapeProps.next().value * 10);
+    const newIrregularity = randomForShapeProps.next().value * 0.8;
+    const newRotation = randomForShapeProps.next().value * 2 * Math.PI;
+    const newHue = Math.abs(hash % 360);
+
+    // 各頂点のランダム係数を事前に計算 (同じハッシュから生成されるが、別のシードで)
+    const newVertexRandomFactors = [];
+    const vertexRandomGen = pseudoRandomGenerator(hash + 1); // 頂点用は別のシード
+    for (let i = 0; i <= newSides; i++) {
+      newVertexRandomFactors.push(vertexRandomGen.next().value);
+    }
+
+    targetShapeProps = {
+      hue: newHue,
+      baseRadius: newBaseRadius,
+      sides: newSides,
+      irregularity: newIrregularity,
+      rotation: newRotation,
+      vertexRandomFactors: newVertexRandomFactors,
+    };
+
+    // 初回描画時、または空の状態から入力された場合は、現在値をターゲット値に設定してアニメーションをスキップ
+    if (currentShapeProps.sides === 0 && text.length > 0) {
+      currentShapeProps = { ...targetShapeProps };
+    }
+
+    // アニメーションを開始
+    animationStartTime = performance.now();
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+    }
+    animationFrameId = requestAnimationFrame(animateShape);
   });
 
   // 初期状態の描画（プロンプトメッセージ）
@@ -72,6 +137,56 @@ window.addEventListener("DOMContentLoaded", () => {
     while (true) {
       state = (state * 16807) % 2147483647;
       yield state / 2147483647; // 0と1の間の値を返す
+    }
+  }
+
+  // 線形補間関数 (Linear Interpolation)
+  function lerp(start, end, t) {
+    return start * (1 - t) + end * t;
+  }
+
+  // 図形のアニメーションループ
+  function animateShape(currentTime) {
+    const elapsed = currentTime - animationStartTime;
+    const progress = Math.min(1, elapsed / animationDuration); // 0から1へ進行
+
+    // 各プロパティを補間
+    currentShapeProps.hue = lerp(
+      currentShapeProps.hue,
+      targetShapeProps.hue,
+      progress
+    );
+    currentShapeProps.baseRadius = lerp(
+      currentShapeProps.baseRadius,
+      targetShapeProps.baseRadius,
+      progress
+    );
+    currentShapeProps.irregularity = lerp(
+      currentShapeProps.irregularity,
+      targetShapeProps.irregularity,
+      progress
+    );
+
+    // 回転は最短経路で補間
+    let startRotation = currentShapeProps.rotation;
+    let endRotation = targetShapeProps.rotation;
+    let diff = endRotation - startRotation;
+    if (diff > Math.PI) diff -= 2 * Math.PI;
+    if (diff < -Math.PI) diff += 2 * Math.PI;
+    currentShapeProps.rotation = startRotation + diff * progress;
+
+    currentShapeProps.sides = targetShapeProps.sides; // 辺の数はアニメーションせず即時変更
+    currentShapeProps.vertexRandomFactors =
+      targetShapeProps.vertexRandomFactors; // 頂点係数も即時変更
+
+    drawShape(currentShapeProps); // 補間されたプロパティで描画
+
+    if (progress < 1) {
+      animationFrameId = requestAnimationFrame(animateShape);
+    } else {
+      // アニメーション終了時、プロパティを正確にターゲット値に設定
+      currentShapeProps = { ...targetShapeProps };
+      animationFrameId = null;
     }
   }
 
@@ -137,41 +252,35 @@ window.addEventListener("DOMContentLoaded", () => {
     oscillator.stop(audioContext.currentTime + decay);
   }
 
-  // 図形を描画するメイン関数
-  function drawShape(text, hash) {
+  // 図形を描画する関数 (アニメーションループから呼ばれる)
+  function drawShape(props) {
     // キャンバスをクリア
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const len = text.length;
+
+    // テキスト入力が空の場合は初期メッセージを表示
+    if (textInput.value.length === 0) {
+      drawInitialMessage();
+      return;
+    }
+
+    // プロパティが初期状態（sides=0）の場合は描画しない
+    if (props.sides === 0) {
+      return;
+    }
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    const random = pseudoRandomGenerator(hash);
-
-    // 色
-    const hue = Math.abs(hash % 360);
-    ctx.fillStyle = `hsl(${hue}, 75%, 55%)`;
-
-    // サイズ (これは文字数に依存させる)
-    const maxRadius = canvas.width / 2 - 30; // 少しマージンを増やす
-    const baseRadius = Math.min(maxRadius, 30 + len * 10);
-
-    // 辺の数 (3から12の間でランダムに)
-    const sides = 3 + Math.floor(random.next().value * 10);
-    // 凹凸の度合い (0: なし, ~0.8: 大きい)
-    const irregularity = random.next().value * 0.8;
-    // 全体の回転
-    const rotation = random.next().value * 2 * Math.PI;
+    ctx.fillStyle = `hsl(${props.hue}, 75%, 55%)`;
 
     ctx.beginPath();
-    // 各頂点の座標を計算して線を描画
-    for (let i = 0; i <= sides; i++) {
-      const angle = rotation + (i * 2 * Math.PI) / sides;
-      // 各頂点の半径をランダムに変化させる
-      const randomFactor = random.next().value; // 0-1
+    for (let i = 0; i <= props.sides; i++) {
+      const angle = props.rotation + (i * 2 * Math.PI) / props.sides;
+      const randomFactor =
+        props.vertexRandomFactors[i % props.vertexRandomFactors.length]; // 頂点係数を適用
       const radiusVariation =
-        baseRadius * irregularity * (randomFactor - 0.5) * 2; // -1 to 1
-      const currentRadius = baseRadius + radiusVariation;
+        props.baseRadius * props.irregularity * (randomFactor - 0.5) * 2;
+      const currentRadius = props.baseRadius + radiusVariation;
       const x = centerX + currentRadius * Math.cos(angle);
       const y = centerY + currentRadius * Math.sin(angle);
       if (i === 0) ctx.moveTo(x, y);
