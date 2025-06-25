@@ -20,17 +20,7 @@ window.addEventListener("DOMContentLoaded", () => {
   ];
 
   // アニメーション関連のグローバル変数
-  let currentShapeProps = {
-    hue: 0,
-    baseRadius: 0,
-    sides: 0,
-    irregularity: 0,
-    rotation: 0,
-    vertexRandomFactors: [],
-  };
-  let targetShapeProps = { ...currentShapeProps };
-  let animationStartTime = 0;
-  const animationDuration = 500; // アニメーションの持続時間 (ms)
+  let shapes = []; // 表示されているすべての図形を管理する配列
   let animationFrameId = null;
 
   // キャンバスのサイズを動的に設定・リサイズする関数
@@ -45,8 +35,19 @@ window.addEventListener("DOMContentLoaded", () => {
       canvas.width = size;
       canvas.height = size;
     }
-    // リサイズ後に現在の図形を再描画
-    drawShape(currentShapeProps);
+    // リサイズ時に図形を再生成して新しいサイズに適応させる
+    const text = textInput.value;
+    const targetCount = text.length;
+    shapes = []; // 既存の図形をクリア
+    while (shapes.length < targetCount) {
+      const newShape = createShape(text, shapes.length);
+      newShape.age = newShape.lifespan; // アニメーションなしで即時表示
+      shapes.push(newShape);
+    }
+    // 再描画をトリガー
+    if (!animationFrameId) {
+      animate();
+    }
   }
 
   // テキスト入力イベントを監視
@@ -59,70 +60,40 @@ window.addEventListener("DOMContentLoaded", () => {
     const text = e.target.value;
 
     if (text.length === 0) {
-      drawInitialMessage();
-      resetUIColors();
-      // アニメーションを停止し、プロパティをリセット
+      shapes = []; // すべての図形をクリア
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
       }
-      currentShapeProps = {
-        hue: 0,
-        baseRadius: 0,
-        sides: 0,
-        irregularity: 0,
-        rotation: 0,
-        vertexRandomFactors: [],
-      };
-      targetShapeProps = { ...currentShapeProps };
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawInitialMessage();
+      resetUIColors();
       return;
     }
 
+    const targetCount = text.length;
+
+    // 不要になった図形を配列の後ろから削除
+    if (shapes.length > targetCount) {
+      shapes.splice(targetCount);
+    }
+
+    // 新しい図形を追加
+    while (shapes.length < targetCount) {
+      const newShape = createShape(text, shapes.length);
+      shapes.push(newShape);
+    }
+
+    // UIの色や音はテキスト全体から生成
     const hash = createHash(text);
-    const randomForShapeProps = pseudoRandomGenerator(hash); // 図形の主要プロパティ用
-
-    // テキストに基づいて音を生成・再生
     generateAndPlaySound(text, hash);
-    // UIの色を更新
     updateUIColors(hash);
-    // 図形を描画
-
-    // 新しいターゲットプロパティを計算
-    const len = text.length;
-    const maxRadius = canvas.width / 2 - 30;
-    const newBaseRadius = Math.min(maxRadius, 30 + len * 10);
-    const newSides = 3 + Math.floor(randomForShapeProps.next().value * 10);
-    const newIrregularity = randomForShapeProps.next().value * 0.8;
-    const newRotation = randomForShapeProps.next().value * 2 * Math.PI;
-    const newHue = Math.abs(hash % 360);
-
-    // 各頂点のランダム係数を事前に計算 (同じハッシュから生成されるが、別のシードで)
-    const newVertexRandomFactors = [];
-    const vertexRandomGen = pseudoRandomGenerator(hash + 1); // 頂点用は別のシード
-    for (let i = 0; i <= newSides; i++) {
-      newVertexRandomFactors.push(vertexRandomGen.next().value);
-    }
-
-    targetShapeProps = {
-      hue: newHue,
-      baseRadius: newBaseRadius,
-      sides: newSides,
-      irregularity: newIrregularity,
-      rotation: newRotation,
-      vertexRandomFactors: newVertexRandomFactors,
-    };
-
-    // 初回描画時、または空の状態から入力された場合は、現在値をターゲット値に設定してアニメーションをスキップ
-    if (currentShapeProps.sides === 0 && text.length > 0) {
-      currentShapeProps = { ...targetShapeProps };
-    }
 
     // アニメーションを開始
-    animationStartTime = performance.now();
     if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
+      return; // すでに実行中なら何もしない
     }
-    animationFrameId = requestAnimationFrame(animateShape);
+    animate();
   });
 
   // 初期状態の描画（プロンプトメッセージ）
@@ -169,47 +140,70 @@ window.addEventListener("DOMContentLoaded", () => {
     return start * (1 - t) + end * t;
   }
 
-  // 図形のアニメーションループ
-  function animateShape(currentTime) {
-    const elapsed = currentTime - animationStartTime;
-    const progress = Math.min(1, elapsed / animationDuration); // 0から1へ進行
+  // 新しい図形オブジェクトを生成する関数
+  function createShape(text, index) {
+    const hash = createHash(text.substring(0, index + 1)); // 各図形はそこまでのテキストで決まる
+    const random = pseudoRandomGenerator(hash);
 
-    // 各プロパティを補間
-    currentShapeProps.hue = lerp(
-      currentShapeProps.hue,
-      targetShapeProps.hue,
-      progress
-    );
-    currentShapeProps.baseRadius = lerp(
-      currentShapeProps.baseRadius,
-      targetShapeProps.baseRadius,
-      progress
-    );
-    currentShapeProps.irregularity = lerp(
-      currentShapeProps.irregularity,
-      targetShapeProps.irregularity,
-      progress
-    );
+    // 図形の最終的な半径
+    const finalRadius = 15 + random.next().value * (15 + text.length * 1.2);
 
-    // 回転は最短経路で補間
-    let startRotation = currentShapeProps.rotation;
-    let endRotation = targetShapeProps.rotation;
-    let diff = endRotation - startRotation;
-    if (diff > Math.PI) diff -= 2 * Math.PI;
-    if (diff < -Math.PI) diff += 2 * Math.PI;
-    currentShapeProps.rotation = startRotation + diff * progress;
+    // 図形の最終的な位置を決定論的に配置
+    const posRand = pseudoRandomGenerator(hash + index);
+    const targetX = (posRand.next().value * 0.8 + 0.1) * canvas.width;
+    const targetY = (posRand.next().value * 0.8 + 0.1) * canvas.height;
 
-    currentShapeProps.sides = targetShapeProps.sides; // 辺の数はアニメーションせず即時変更
-    currentShapeProps.vertexRandomFactors =
-      targetShapeProps.vertexRandomFactors; // 頂点係数も即時変更
+    // 分裂元（前の図形）の位置を取得。なければ中央から。
+    const spawnFrom = shapes[index - 1] || {
+      targetX: canvas.width / 2,
+      targetY: canvas.height / 2,
+    };
 
-    drawShape(currentShapeProps); // 補間されたプロパティで描画
+    const sides = 3 + Math.floor(random.next().value * 7);
+    const irregularity = random.next().value * 0.7;
+    const rotation = random.next().value * 2 * Math.PI;
+    const hue = hash % 360;
 
-    if (progress < 1) {
-      animationFrameId = requestAnimationFrame(animateShape);
+    const vertexRandomFactors = [];
+    for (let i = 0; i <= sides; i++) {
+      vertexRandomFactors.push(random.next().value);
+    }
+
+    return {
+      // 静的プロパティ
+      sides,
+      irregularity,
+      rotation,
+      hue,
+      vertexRandomFactors,
+      targetX,
+      targetY,
+      finalRadius,
+      // アニメーション用プロパティ
+      spawnX: spawnFrom.targetX,
+      spawnY: spawnFrom.targetY,
+      age: 0,
+      lifespan: 40, // アニメーションのフレーム数
+    };
+  }
+
+  // メインのアニメーションループ
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let isAnimating = false;
+    shapes.forEach((shape) => {
+      if (shape.age < shape.lifespan) {
+        shape.age++;
+        isAnimating = true;
+      }
+      const progress = Math.min(1, shape.age / shape.lifespan);
+      drawPolygon(shape, progress);
+    });
+
+    if (isAnimating || shapes.length !== textInput.value.length) {
+      animationFrameId = requestAnimationFrame(animate);
     } else {
-      // アニメーション終了時、プロパティを正確にターゲット値に設定
-      currentShapeProps = { ...targetShapeProps };
       animationFrameId = null;
     }
   }
@@ -277,45 +271,39 @@ window.addEventListener("DOMContentLoaded", () => {
     oscillator.stop(audioContext.currentTime + decay);
   }
 
-  // 図形を描画する関数 (アニメーションループから呼ばれる)
-  function drawShape(props) {
-    // キャンバスをクリア
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // 個々の多角形を描画する関数
+  function drawPolygon(shape, progress) {
+    // ease-out cubic easing function for a nice effect
+    const easedProgress = 1 - Math.pow(1 - progress, 3);
 
-    // テキスト入力が空の場合は初期メッセージを表示
-    if (textInput.value.length === 0) {
-      drawInitialMessage();
-      return;
-    }
+    const currentRadius = shape.finalRadius * easedProgress;
+    if (currentRadius < 1) return; // 小さすぎる図形は描画しない
 
-    // プロパティが初期状態（sides=0）の場合は描画しない
-    if (props.sides === 0) {
-      return;
-    }
+    const currentX = lerp(shape.spawnX, shape.targetX, easedProgress);
+    const currentY = lerp(shape.spawnY, shape.targetY, easedProgress);
 
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-
-    ctx.fillStyle = `hsl(${props.hue}, 75%, 55%)`;
+    ctx.fillStyle = `hsla(${shape.hue}, 75%, 60%, 0.8)`;
+    ctx.strokeStyle = `hsl(${shape.hue}, 75%, 40%)`;
+    ctx.lineWidth = 1 + easedProgress;
 
     ctx.beginPath();
-    for (let i = 0; i <= props.sides; i++) {
-      const angle = props.rotation + (i * 2 * Math.PI) / props.sides;
+    for (let i = 0; i <= shape.sides; i++) {
+      const angle = shape.rotation + (i * 2 * Math.PI) / shape.sides;
       const randomFactor =
-        props.vertexRandomFactors[i % props.vertexRandomFactors.length]; // 頂点係数を適用
+        shape.vertexRandomFactors[i % shape.vertexRandomFactors.length];
       const radiusVariation =
-        props.baseRadius * props.irregularity * (randomFactor - 0.5) * 2;
-      const currentRadius = props.baseRadius + radiusVariation;
-      const x = centerX + currentRadius * Math.cos(angle);
-      const y = centerY + currentRadius * Math.sin(angle);
+        currentRadius * shape.irregularity * (randomFactor - 0.5) * 2;
+      const r = currentRadius + radiusVariation;
+      const x = currentX + r * Math.cos(angle);
+      const y = currentY + r * Math.sin(angle);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
   }
 
-  // ページ読み込み時に初期メッセージを表示
   // ウィンドウリサイズ時にもキャンバスサイズを調整
   window.addEventListener("resize", resizeCanvas);
   // 初回読み込み時にキャンバスサイズを計算して設定
