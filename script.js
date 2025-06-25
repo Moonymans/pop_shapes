@@ -26,43 +26,36 @@ window.addEventListener("DOMContentLoaded", () => {
     );
   }
 
-  // 文字列から色を生成する関数
-  function getColorFromText(text) {
-    if (text.length === 0) return "#cccccc";
-
+  // 文字列から決定論的なハッシュ値を生成する
+  function createHash(text) {
     let hash = 0;
+    if (text.length === 0) return hash;
     for (let i = 0; i < text.length; i++) {
-      // シンプルなハッシュ関数
-      hash = text.charCodeAt(i) + ((hash << 5) - hash);
+      const char = text.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash |= 0; // 32ビット整数に変換
     }
-    // HSL色空間を利用して見やすい色を生成
-    const hue = Math.abs(hash % 360);
-    return `hsl(${hue}, 75%, 55%)`;
+    return hash;
   }
 
-  // 多角形を描画する関数
-  function drawPolygon(x, y, radius, sides) {
-    ctx.beginPath();
-    // 開始点を計算 (頂点が上に来るように -PI/2 でオフセット)
-    const startAngle = -Math.PI / 2;
-    ctx.moveTo(
-      x + radius * Math.cos(startAngle),
-      y + radius * Math.sin(startAngle)
-    );
-
-    for (let i = 1; i <= sides; i++) {
-      const angle = startAngle + (i * 2 * Math.PI) / sides;
-      ctx.lineTo(x + radius * Math.cos(angle), y + radius * Math.sin(angle));
+  // 決定論的な「乱数」ジェネレータ
+  // 同じシードからは常に同じ数列を生成する
+  function* pseudoRandomGenerator(seed) {
+    let state = seed % 2147483647;
+    if (state <= 0) {
+      state += 2147483646;
     }
-    ctx.closePath();
-    ctx.fill();
+
+    while (true) {
+      state = (state * 16807) % 2147483647;
+      yield state / 2147483647; // 0と1の間の値を返す
+    }
   }
 
   // 図形を描画するメイン関数
   function drawShape(text) {
     // キャンバスをクリア
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     const len = text.length;
 
     if (len === 0) {
@@ -70,27 +63,44 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // パラメータを計算
-    const sides = len < 3 ? 100 : len; // 3未満は円（辺の多い多角形で近似）、それ以上は文字数の多角形
-    const maxRadius = canvas.width / 2 - 20;
-    const radius = Math.min(maxRadius, 20 + len * 8);
-    const color = getColorFromText(text);
-
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    ctx.fillStyle = color;
+    // テキストからプロパティを生成
+    const hash = createHash(text);
+    const random = pseudoRandomGenerator(hash);
 
-    // 形を描画
-    if (len < 3) {
-      // 円を描画
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-      ctx.fill();
-    } else {
-      // 多角形を描画
-      drawPolygon(centerX, centerY, radius, sides);
+    // 色
+    const hue = Math.abs(hash % 360);
+    ctx.fillStyle = `hsl(${hue}, 75%, 55%)`;
+
+    // サイズ (これは文字数に依存させる)
+    const maxRadius = canvas.width / 2 - 30; // 少しマージンを増やす
+    const baseRadius = Math.min(maxRadius, 30 + len * 10);
+
+    // 辺の数 (3から12の間でランダムに)
+    const sides = 3 + Math.floor(random.next().value * 10);
+    // 凹凸の度合い (0: なし, ~0.8: 大きい)
+    const irregularity = random.next().value * 0.8;
+    // 全体の回転
+    const rotation = random.next().value * 2 * Math.PI;
+
+    ctx.beginPath();
+    // 各頂点の座標を計算して線を描画
+    for (let i = 0; i <= sides; i++) {
+      const angle = rotation + (i * 2 * Math.PI) / sides;
+      // 各頂点の半径をランダムに変化させる
+      const randomFactor = random.next().value; // 0-1
+      const radiusVariation =
+        baseRadius * irregularity * (randomFactor - 0.5) * 2; // -1 to 1
+      const currentRadius = baseRadius + radiusVariation;
+      const x = centerX + currentRadius * Math.cos(angle);
+      const y = centerY + currentRadius * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
+    ctx.closePath();
+    ctx.fill();
   }
 
   // ページ読み込み時に初期メッセージを表示
