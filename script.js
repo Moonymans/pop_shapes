@@ -2,6 +2,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const textInput = document.getElementById("textInput");
   const canvas = document.getElementById("shapeCanvas");
   const ctx = canvas.getContext("2d");
+  const canvasContainer = document.querySelector(".canvas-container");
   const body = document.body;
   const h1 = document.querySelector("h1");
   let audioContext = null; // Web Audio APIのコンテキスト
@@ -20,10 +21,21 @@ window.addEventListener("DOMContentLoaded", () => {
   const animationDuration = 500; // アニメーションの持続時間 (ms)
   let animationFrameId = null;
 
-  // キャンバスのサイズを設定
-  const canvasSize = Math.min(window.innerWidth * 0.9, 700);
-  canvas.width = canvasSize;
-  canvas.height = canvasSize;
+  // キャンバスのサイズを動的に設定・リサイズする関数
+  function resizeCanvas() {
+    // コンテナのサイズから最適なキャンバスサイズを計算 (少し余白を持たせる)
+    const padding = 20;
+    const size =
+      Math.min(canvasContainer.clientWidth, canvasContainer.clientHeight) -
+      padding;
+
+    if (size > 0) {
+      canvas.width = size;
+      canvas.height = size;
+    }
+    // リサイズ後に現在の図形を再描画
+    drawShape(currentShapeProps);
+  }
 
   // テキスト入力イベントを監視
   textInput.addEventListener("input", (e) => {
@@ -291,5 +303,8 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // ページ読み込み時に初期メッセージを表示
-  drawInitialMessage();
+  // ウィンドウリサイズ時にもキャンバスサイズを調整
+  window.addEventListener("resize", resizeCanvas);
+  // 初回読み込み時にキャンバスサイズを計算して設定
+  resizeCanvas();
 });
