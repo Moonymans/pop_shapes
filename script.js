@@ -1,10 +1,9 @@
 window.addEventListener("DOMContentLoaded", () => {
-  const textInput = document.getElementById("textInput");
   const canvas = document.getElementById("shapeCanvas");
   const ctx = canvas.getContext("2d");
   const canvasContainer = document.querySelector(".canvas-container");
   const body = document.body;
-  const h1 = document.querySelector("h1");
+  // h1 and textInput are removed from HTML
   let audioContext = null; // Web Audio APIのコンテキスト
 
   // ドレミファソラシドの周波数 (Cメジャースケール)
@@ -21,30 +20,29 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // アニメーション関連のグローバル変数
   let shapes = []; // 表示されているすべての図形を管理する配列
+  let currentText = ""; // キーボード入力を保持する
   let animationFrameId = null;
 
   // キャンバスのサイズを動的に設定・リサイズする関数
   function resizeCanvas() {
-    // コンテナのサイズから最適なキャンバスサイズを計算 (少し余白を持たせる)
-    const padding = 20;
-    const size =
-      Math.min(canvasContainer.clientWidth, canvasContainer.clientHeight) -
-      padding;
+    // コンテナのサイズをそのままキャンバスのサイズに設定
+    const width = canvasContainer.clientWidth;
+    const height = canvasContainer.clientHeight;
 
-    if (size > 0) {
-      canvas.width = size;
-      canvas.height = size;
+    if (width > 0 && height > 0) {
+      canvas.width = width;
+      canvas.height = height;
     }
+
     // リサイズ時に図形を再生成または初期メッセージを再描画
-    const text = textInput.value;
-    const targetCount = text.length;
+    const targetCount = currentText.length;
     if (targetCount === 0) {
-      drawInitialMessage();
+      drawStartTypingMessage();
       return;
     }
     shapes = []; // 既存の図形をクリア
     while (shapes.length < targetCount) {
-      const newShape = createShape(text, shapes.length);
+      const newShape = createShape(currentText, shapes.length);
       newShape.age = newShape.lifespan; // アニメーションなしで即時表示
       // Place at final position for resize
       newShape.x = newShape.targetX;
@@ -57,15 +55,28 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // テキスト入力イベントを監視
-  textInput.addEventListener("input", (e) => {
+  // キーボード入力イベントを監視
+  window.addEventListener("keydown", (e) => {
     // 最初の入力でAudioContextを初期化（ブラウザの自動再生ポリシー対策）
     if (!audioContext) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    const text = e.target.value;
+    // 入力されたキーに応じてテキストを更新
+    if (e.key === "Backspace") {
+      currentText = currentText.slice(0, -1);
+    } else if (e.key.length === 1) {
+      // 文字、数字、記号、スペースなどを追加
+      currentText += e.key;
+    } else {
+      return; // Shift, Ctrl, Enterなどのキーは無視
+    }
 
+    updateApplicationState(currentText);
+  });
+
+  // アプリケーションの状態を更新するメイン関数
+  function updateApplicationState(text) {
     if (text.length === 0) {
       shapes = []; // すべての図形をクリア
       if (animationFrameId) {
@@ -73,44 +84,38 @@ window.addEventListener("DOMContentLoaded", () => {
         animationFrameId = null;
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawInitialMessage();
+      drawStartTypingMessage();
       resetUIColors();
       return;
     }
 
     const targetCount = text.length;
-
-    // 不要になった図形を配列の後ろから削除
     if (shapes.length > targetCount) {
       shapes.splice(targetCount);
     }
 
-    // 新しい図形を追加
     while (shapes.length < targetCount) {
       const newShape = createShape(text, shapes.length);
       shapes.push(newShape);
     }
 
-    // UIの色や音はテキスト全体から生成
     const hash = createHash(text);
     generateAndPlaySound(text, hash);
     updateUIColors(hash);
 
-    // アニメーションを開始
-    if (animationFrameId) {
-      return; // すでに実行中なら何もしない
+    if (!animationFrameId) {
+      animate();
     }
-    animate();
-  });
+  }
 
   // 初期状態の描画（プロンプトメッセージ）
-  function drawInitialMessage() {
+  function drawStartTypingMessage() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "16px sans-serif";
-    ctx.fillStyle = "#aaa";
+    ctx.font = "20px sans-serif";
+    ctx.fillStyle = "#ccc";
     ctx.textAlign = "center";
     ctx.fillText(
-      "テキストボックスに何か入力してください",
+      "キーボードで入力してください",
       canvas.width / 2,
       canvas.height / 2
     );
@@ -250,22 +255,14 @@ window.addEventListener("DOMContentLoaded", () => {
     body.style.backgroundColor = `hsl(${hue}, 25%, 95%)`;
     // 基本テキスト色 (暗く、彩度低め)
     body.style.color = `hsl(${hue}, 15%, 30%)`;
-    // 見出し色 (はっきりと)
-    if (h1) {
-      h1.style.color = `hsl(${hue}, 60%, 40%)`;
-    }
-    // 入力欄のボーダー色も合わせる
-    textInput.style.borderColor = `hsl(${hue}, 60%, 40%)`;
+    // h1とtextInputは削除されたため、関連コードは不要
   }
 
   // UIの色をデフォルトに戻す関数
   function resetUIColors() {
     body.style.backgroundColor = "";
     body.style.color = "";
-    if (h1) {
-      h1.style.color = "";
-    }
-    textInput.style.borderColor = "";
+    // h1とtextInputは削除されたため、関連コードは不要
   }
 
   // 音を生成して再生する高レベル関数
