@@ -233,7 +233,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const type = waveforms[Math.floor(random.next().value * waveforms.length)];
 
     // 音の長さをランダムに
-    const decay = 0.1 + random.next().value * 0.3; // 0.1秒から0.4秒の間
+    const decay = 0.3 + random.next().value * 0.5; // 0.3秒から0.8秒の間
 
     playSound({ frequency, type, decay });
   }
